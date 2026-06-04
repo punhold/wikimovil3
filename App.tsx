@@ -1071,12 +1071,33 @@ const handleAddComment = async (postId: string, text: string) => {
   };
 
   const handleAIChat = async () => {
-  if (!chatInput.trim()) return;
+  if (!chatInput.trim() && !chatImage) return;
 
   const userMsg = chatInput;
+  let imageBase64: string | null = null;
+  let imagePreviewUrl: string | undefined = undefined;
 
-  setChatMessages(prev => [...prev, { role: 'user', text: userMsg }]);
+  // Convertir imagen a base64 si existe
+  if (chatImage) {
+    imagePreviewUrl = URL.createObjectURL(chatImage);
+    imageBase64 = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        // Sacar el prefijo "data:image/jpeg;base64,"
+        resolve(result.split(',')[1]);
+      };
+      reader.readAsDataURL(chatImage);
+    });
+  }
+
+  setChatMessages(prev => [...prev, { 
+    role: 'user', 
+    text: userMsg || '📷 Imagen adjunta', 
+    imageUrl: imagePreviewUrl 
+  }]);
   setChatInput('');
+  setChatImage(null);
   setIsChatThinking(true);
 
   try {
@@ -1085,26 +1106,20 @@ const handleAddComment = async (postId: string, text: string) => {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: userMsg })
+        body: JSON.stringify({ 
+          question: userMsg || "¿Qué ves en esta imagen?",
+          image: imageBase64 || null
+        })
       }
     );
 
-    if (!res.ok) {
-      throw new Error("Error del agente IA");
-    }
+    if (!res.ok) throw new Error("Error del agente IA");
 
     const data = await res.json();
-
-    setChatMessages(prev => [
-      ...prev,
-      { role: 'model', text: data.answer }
-    ]);
+    setChatMessages(prev => [...prev, { role: 'model', text: data.answer }]);
   } catch (error) {
     console.error(error);
-    setChatMessages(prev => [
-      ...prev,
-      { role: 'model', text: "Error de conexión con el Agente IA." }
-    ]);
+    setChatMessages(prev => [...prev, { role: 'model', text: "Error de conexión con el Agente IA." }]);
   } finally {
     setIsChatThinking(false);
   }

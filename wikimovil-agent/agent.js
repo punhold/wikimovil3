@@ -42,17 +42,16 @@ export async function searchInternal(query) {
   return results;
 }
 
-export async function runAgent(question) {
+export async function runAgent(question, imageBase64 = null) {
   const internal = await searchInternal(question);
   const hasInternal = internal.length > 0;
 
   let external = [];
-  if (!hasInternal) {
+  if (!hasInternal && !imageBase64) {
     external = await searchInternet(question);
   }
 
   let context = "";
-
   if (internal.length > 0) {
     context += "INFORMACIÓN INTERNA (WikiMovil):\n";
     internal.forEach(item => {
@@ -62,23 +61,16 @@ export async function runAgent(question) {
     });
     context += "\n";
   }
-
   if (external.length > 0) {
     context += "INFORMACIÓN EXTERNA:\n";
     external.forEach(item => { context += `- ${item.summary}\n`; });
     context += "\n";
   }
 
-  const prompt = `Sos un asistente técnico de WikiMovil, una wiki interna para técnicos de telecomunicaciones.
-
+  const systemPrompt = `Sos un asistente técnico de WikiMovil, una wiki interna para técnicos de telecomunicaciones.
 Hay información interna disponible: ${hasInternal ? "SÍ" : "NO"}
-
 Contexto disponible:
 ${context || "Sin contexto disponible."}
-
-Pregunta del técnico:
-"${question}"
-
 Reglas:
 - Priorizá SIEMPRE la información interna si existe.
 - Si usás información externa, aclaralo.
@@ -86,13 +78,34 @@ Reglas:
 - Sé conciso y directo. Respondé en español.
 - Si hay información interna relevante, citá el título del post o documento.`;
 
+  // Armar el mensaje con o sin imagen
+  let userContent;
+  if (imageBase64) {
+    userContent = [
+      {
+        type: "image_url",
+        image_url: {
+          url: `data:image/jpeg;base64,${imageBase64}`,
+          detail: "high"
+        }
+      },
+      {
+        type: "text",
+        text: question
+      }
+    ];
+  } else {
+    userContent = question;
+  }
+
   const completion = await openai.chat.completions.create({
-    model: "gpt-4.1-mini",
+    model: imageBase64 ? "gpt-4o" : "gpt-4.1-mini", // Vision requiere gpt-4o
     messages: [
-      { role: "system", content: "Sos un asistente técnico amistoso de telecomunicaciones." },
-      { role: "user", content: prompt }
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userContent }
     ],
-    temperature: 0.3
+    temperature: 0.3,
+    max_tokens: 1000
   });
 
   return {
