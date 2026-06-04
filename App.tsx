@@ -14,7 +14,7 @@ import {
 } from "firebase/auth";
 
 import {
-  doc, updateDoc, collection, addDoc, getDocs, getDoc, query, orderBy, deleteDoc, onSnapshot
+  doc, updateDoc, collection, addDoc, getDoc, query, orderBy, deleteDoc, onSnapshot
 } from "firebase/firestore";
 
 import { ref, deleteObject } from "firebase/storage";
@@ -369,14 +369,40 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUser, onDelete, isAdmi
       {/* Content */}
       <div 
         className="text-gray-800 mb-4 prose prose-sm max-w-none"
-        dangerouslySetInnerHTML={{ __html: post.content }}
+        dangerouslySetInnerHTML={{ __html: (() => {
+          // Sanitización básica: elimina scripts, eventos inline y iframes
+          return (post.content || '')
+            .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
+            .replace(/<iframe[\s\S]*?>[\s\S]*?<\/iframe>/gi, '')
+            .replace(/\son\w+\s*=\s*["'][^"']*["']/gi, '')
+            .replace(/javascript:/gi, '');
+        })() }}
       />
 
       {post.imageUrl && (
         <div className="mb-4 rounded-lg overflow-hidden border border-gray-100 bg-gray-50">
           <img src={post.imageUrl} alt="Post attachment" className="w-full h-auto object-cover max-h-96" />
         </div>
-        )}
+      )}
+
+      {post.attachmentUrl && post.attachmentName && (
+        <a
+          href={post.attachmentUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center gap-3 mb-4 p-3 bg-blue-50 rounded-lg border border-blue-100 hover:bg-blue-100 transition-colors group"
+        >
+          <div className="w-9 h-9 bg-white rounded-lg flex items-center justify-center shadow-sm flex-shrink-0">
+            <FileText size={18} className="text-blue-500" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-blue-700 truncate">{post.attachmentName}</p>
+            <p className="text-xs text-blue-400">Toca para abrir</p>
+          </div>
+          <Download size={16} className="text-blue-300 group-hover:text-blue-500 flex-shrink-0" />
+        </a>
+      )}
+
       <div className="flex flex-wrap gap-2 mb-4">
         {post.tags.map(tag => (
           <button 
@@ -558,7 +584,8 @@ const startChatListening = () => {};
   const [newPostTitle, setNewPostTitle] = useState('');
   const [newPostContent, setNewPostContent] = useState('');
   const [newPostTags, setNewPostTags] = useState<string[]>([]);
-  const [newPostImage, setNewPostImage] = useState<File | null>(null);
+  const [newPostImage, setNewPostImage] = useState<File | null>(null); // imagen inline en editor
+  const [newPostAttachment, setNewPostAttachment] = useState<File | null>(null); // archivo adjunto
   const [isUploading, setIsUploading] = useState(false);
   const [customTag, setCustomTag] = useState('');
   const [showCustomTagInput, setShowCustomTagInput] = useState(false);
@@ -725,12 +752,9 @@ useEffect(() => {
   if (!firebaseUser) return;
 
   const q = query(collection(db, "posts"), orderBy("timestamp", "desc"));
-  const unsub = onSnapshot(q, async (snap) => {
-    const postsFromDb: Post[] = await Promise.all(
-      snap.docs.map(async (d) => {
+  const unsub = onSnapshot(q, (snap) => {
+    const postsFromDb: Post[] = snap.docs.map((d) => {
         const data = d.data() as any;
-        const commentsSnap = await getDocs(collection(db, "posts", d.id, "comments"));
-        const comments = commentsSnap.docs.map(c => ({ id: c.id, ...c.data() })) as any[];
         return {
           id: d.id,
           title: data.title || "",
@@ -741,14 +765,15 @@ useEffect(() => {
           authorBadges: data.authorBadges || [],
           content: data.content || "",
           imageUrl: data.imageUrl || null,
+          attachmentUrl: data.attachmentUrl || null,
+          attachmentName: data.attachmentName || null,
           tags: data.tags || [],
           likes: data.likes || 0,
-          comments,
+          comments: [], // comentarios cargados en tiempo real por cada PostCard
           timestamp: data.timestamp || Date.now(),
           isVerified: data.isVerified ?? false,
         };
-      })
-    );
+      });
 
     const myPostsCount = postsFromDb.filter(p => p.authorId === firebaseUser.uid).length;
     const badges = getPostBadgeForUser(myPostsCount);
@@ -830,6 +855,12 @@ useEffect(() => {
 
   // --- Handlers ---
 
+  // Upload de imagen inline en el editor
+  const handleEditorImageUpload = async (file: File): Promise<string> => {
+    const storagePath = `posts/inline/${state.currentUser.id}/${Date.now()}_${file.name}`;
+    return await uploadFile(file, storagePath);
+  };
+
   const handleCreatePost = async () => {
   if (!newPostContent.trim() || !newPostTitle.trim()) return;
   if (newPostTags.length === 0) {
@@ -841,12 +872,14 @@ useEffect(() => {
 
   try {
     let imageUrl: string | null = null;
+    let attachmentUrl: string | null = null;
+    let attachmentName: string | null = null;
 
-    // 🔥 SUBIR IMAGEN A FIREBASE STORAGE
-    if (newPostImage) {
-      const storagePath = `posts/${state.currentUser.id}/${Date.now()}_${newPostImage.name}`;
-      imageUrl = await uploadFile(newPostImage, storagePath);
-      console.log("URL SUBIDA:", imageUrl);
+    // Subir archivo adjunto si existe
+    if (newPostAttachment) {
+      const storagePath = `attachments/${state.currentUser.id}/${Date.now()}_${newPostAttachment.name}`;
+      attachmentUrl = await uploadFile(newPostAttachment, storagePath);
+      attachmentName = newPostAttachment.name;
     }
 
     // 🔥 ARMAR EL POST SIN ID
@@ -862,7 +895,9 @@ useEffect(() => {
       likes: 0,
       comments: [],
       timestamp: Date.now(),
-      imageUrl: imageUrl, // 👈 GUARDA LA URL REAL
+      imageUrl: imageUrl,
+      attachmentUrl: attachmentUrl,
+      attachmentName: attachmentName,
     };
 
     // 🔥 GUARDAR EN FIRESTORE
@@ -880,6 +915,7 @@ useEffect(() => {
     setNewPostContent("");
     setNewPostTags([]);
     setNewPostImage(null);
+    setNewPostAttachment(null);
 
   } catch (err) {
     console.error("Error creando post en Firestore", err);
@@ -1656,27 +1692,34 @@ const unreadNotifications = state.notifications.filter(n => !n.read).length;
 
         <div className="mb-6">
           <label className="block text-sm font-medium text-gray-700 mb-2">Contenido</label>
-          <RichTextEditor value={newPostContent} onChange={setNewPostContent} />
+          <RichTextEditor value={newPostContent} onChange={setNewPostContent} onImageUpload={handleEditorImageUpload} />
         </div>
 
         <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">Imagen (Opcional)</label>
-          <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:bg-gray-50 transition-colors relative">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Archivo adjunto (Opcional)</label>
+          <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:bg-gray-50 transition-colors relative">
             <input 
-              type="file" 
-              accept="image/*"
+              type="file"
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-              onChange={(e) => setNewPostImage(e.target.files ? e.target.files[0] : null)}
+              onChange={(e) => setNewPostAttachment(e.target.files ? e.target.files[0] : null)}
             />
             <div className="flex flex-col items-center pointer-events-none">
-              <ImageIcon className="text-gray-400 mb-2" size={32} />
-              {newPostImage ? (
-                <span className="text-blue-600 font-medium">{newPostImage.name}</span>
+              <FileText className="text-gray-400 mb-2" size={28} />
+              {newPostAttachment ? (
+                <span className="text-blue-600 font-medium text-sm">{newPostAttachment.name}</span>
               ) : (
-                <span className="text-gray-500 text-sm">Toca para subir foto a Google Drive</span>
-              )}   
+                <span className="text-gray-500 text-sm">PDF, Word, Excel, imágenes, etc.</span>
+              )}
             </div>
           </div>
+          {newPostAttachment && (
+            <button
+              onClick={() => setNewPostAttachment(null)}
+              className="mt-1 text-xs text-red-500 hover:underline"
+            >
+              Quitar adjunto
+            </button>
+          )}
         </div>
 
         <div className="mb-6">

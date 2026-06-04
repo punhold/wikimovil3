@@ -41,7 +41,9 @@ export interface Post {
   authorColor: string;
   authorBadges?: Badge[]; // Display author badges on post
   content: string; // HTML content
-  imageUrl?: string;
+  imageUrl?: string | null;
+  attachmentUrl?: string | null;
+  attachmentName?: string | null;
   tags: string[];
   likes: number;
   comments: Comment[];
