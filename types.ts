@@ -60,12 +60,15 @@ export interface Tag {
 export interface DropFile {
   id: string;
   name: string;
+  description?: string;
+  category?: string;
   size: number;
   type: string;
   url: string;
   storagePath: string;
   uploadedBy: string;
   uploadedAt: number;
+  downloads?: number;
 }
 
 export interface Notification {

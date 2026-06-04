@@ -592,6 +592,11 @@ const startChatListening = () => {};
 
   // Drop Library Sort State
   const [sortConfig, setSortConfig] = useState<{ key: 'uploadedAt' | 'size' | 'type'; direction: 'asc' | 'desc' }>({ key: 'uploadedAt', direction: 'desc' });
+  const [libSearch, setLibSearch] = useState('');
+  const [libCategory, setLibCategory] = useState<string | null>(null);
+  const [libUploadDesc, setLibUploadDesc] = useState('');
+  const [libUploadCat, setLibUploadCat] = useState('General');
+  const [libPreview, setLibPreview] = useState<DropFile | null>(null);
 
   
 
@@ -684,12 +689,15 @@ useEffect(() => {
       return {
         id: docSnap.id,
         name: data.name,
+        description: data.description || null,
+        category: data.category || 'General',
         size: data.size,
         type: data.type,
         url: data.url,
         storagePath: data.storagePath,
         uploadedBy: data.uploadedBy,
         uploadedAt: data.uploadedAt,
+        downloads: data.downloads || 0,
       };
     });
     setState((prev) => ({ ...prev, dropFiles: files }));
@@ -933,24 +941,25 @@ useEffect(() => {
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    // Limpiar el input para permitir subir el mismo archivo de nuevo
     e.target.value = "";
-
     setIsUploading(true);
     try {
       const storagePath = `library/${Date.now()}_${file.name}`;
       const url = await uploadFile(file, storagePath);
-      // Solo guardamos en Firestore — onSnapshot actualiza la lista automáticamente
       await addDoc(collection(db, "library"), {
         name: file.name,
+        description: libUploadDesc.trim() || null,
+        category: libUploadCat || "General",
         size: file.size,
         type: file.type,
         url,
         storagePath,
         uploadedBy: state.currentUser.name,
         uploadedAt: Date.now(),
+        downloads: 0,
       });
+      setLibUploadDesc('');
+      setLibUploadCat('General');
     } catch (err) {
       console.error("Error subiendo archivo", err);
       alert("Error subiendo archivo. Verificá los permisos de Firebase Storage.");
@@ -1295,6 +1304,16 @@ Texto del post: ${newPostContent}`
     console.error("Error enviando ayuda", err);
     alert("No se pudo enviar el mensaje");
   }
+  };
+
+  const handleDownload = async (file: DropFile) => {
+    // Incrementar contador de descargas
+    try {
+      await updateDoc(doc(db, "library", file.id), {
+        downloads: (file.downloads || 0) + 1
+      });
+    } catch {}
+    window.open(file.url, '_blank');
   };
 
   const handleDeleteDropFile = async (file: DropFile) => {
@@ -1807,140 +1826,274 @@ const unreadNotifications = state.notifications.filter(n => !n.read).length;
   );
 
   const renderDropLibrary = () => {
-    // Helper to format file size
+    const LIB_CATEGORIES = ['General', 'Procedimientos', 'Formularios', 'Normativas', 'Planos', 'Manuales', 'Otros'];
+
     const formatBytes = (bytes: number) => {
-      if (bytes === 0) return '0 Bytes';
+      if (bytes === 0) return '0 B';
       const k = 1024;
-      const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+      const sizes = ['B', 'KB', 'MB', 'GB'];
       const i = Math.floor(Math.log(bytes) / Math.log(k));
-      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
     };
 
-    // Sorting Logic
-    const sortedFiles = [...state.dropFiles].sort((a, b) => {
-      let comparison = 0;
-      if (sortConfig.key === 'size') {
-        comparison = a.size - b.size;
-      } else if (sortConfig.key === 'uploadedAt') {
-        comparison = a.uploadedAt - b.uploadedAt;
-      } else if (sortConfig.key === 'type') {
-        comparison = a.type.localeCompare(b.type);
-      }
-      return sortConfig.direction === 'asc' ? comparison : -comparison;
-    });
+    const getFileIcon = (type: string, name: string) => {
+      if (type.includes('pdf')) return { bg: 'bg-red-50', color: 'text-red-500', label: 'PDF' };
+      if (type.includes('word') || name.endsWith('.docx') || name.endsWith('.doc')) return { bg: 'bg-blue-50', color: 'text-blue-500', label: 'DOC' };
+      if (type.includes('excel') || type.includes('spreadsheet') || name.endsWith('.xlsx') || name.endsWith('.xls')) return { bg: 'bg-green-50', color: 'text-green-500', label: 'XLS' };
+      if (type.includes('image')) return { bg: 'bg-purple-50', color: 'text-purple-500', label: 'IMG' };
+      return { bg: 'bg-gray-100', color: 'text-gray-500', label: 'FILE' };
+    };
+
+    const isPreviewable = (file: DropFile) =>
+      file.type.includes('image') || file.type.includes('pdf');
+
+    // Filtrar y ordenar
+    const filtered = [...state.dropFiles]
+      .filter(f => {
+        const matchesCat = !libCategory || f.category === libCategory;
+        const matchesSearch = !libSearch || f.name.toLowerCase().includes(libSearch.toLowerCase()) || f.description?.toLowerCase().includes(libSearch.toLowerCase());
+        return matchesCat && matchesSearch;
+      })
+      .sort((a, b) => {
+        let cmp = 0;
+        if (sortConfig.key === 'size') cmp = a.size - b.size;
+        else if (sortConfig.key === 'uploadedAt') cmp = a.uploadedAt - b.uploadedAt;
+        else if (sortConfig.key === 'type') cmp = a.type.localeCompare(b.type);
+        return sortConfig.direction === 'asc' ? cmp : -cmp;
+      });
+
+    // Agrupar por categoría si no hay filtro activo
+    const grouped = libCategory
+      ? { [libCategory]: filtered }
+      : filtered.reduce((acc, f) => {
+          const cat = f.category || 'General';
+          if (!acc[cat]) acc[cat] = [];
+          acc[cat].push(f);
+          return acc;
+        }, {} as Record<string, DropFile[]>);
 
     return (
       <div className="max-w-4xl mx-auto pb-20 md:pb-0">
-        <h1 className="text-2xl font-bold text-gray-800 mb-6">Biblioteca Drop</h1>
-        
-        {/* Upload Section */}
-        <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100 mb-6">
-          <div className="border-2 border-dashed border-blue-200 bg-blue-50/50 rounded-xl p-8 flex flex-col items-center justify-center text-center transition-colors hover:bg-blue-50 hover:border-blue-300 relative group">
-             <input 
-                type="file" 
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                onChange={handleFileUpload}
-                disabled={isUploading}
-             />
-             <div className="bg-white p-3 rounded-full shadow-sm mb-3">
-               <UploadCloud className="text-blue-600" size={32} />
-             </div>
-             <h3 className="font-semibold text-gray-900 mb-1">
-               {isUploading ? 'Subiendo archivo...' : 'Arrastra o haz clic para subir'}
-             </h3>
-             <p className="text-sm text-gray-500">Soporta PDF, Excel, Word, Imagenes</p>
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-bold text-gray-800">Biblioteca Drop</h1>
+          <span className="text-sm text-gray-400">{state.dropFiles.length} archivos</span>
+        </div>
+
+        {/* Upload Panel */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mb-6">
+          <h3 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
+            <UploadCloud size={16} className="text-blue-500" /> Subir archivo
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+            <input
+              type="text"
+              value={libUploadDesc}
+              onChange={e => setLibUploadDesc(e.target.value)}
+              placeholder="Descripción (ej: Manual Huawei RRU 2024)"
+              className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white text-gray-900"
+            />
+            <select
+              value={libUploadCat}
+              onChange={e => setLibUploadCat(e.target.value)}
+              className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white text-gray-900"
+            >
+              {LIB_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div className="border-2 border-dashed border-blue-200 bg-blue-50/40 rounded-xl p-6 flex flex-col items-center justify-center text-center hover:bg-blue-50 hover:border-blue-300 transition-colors relative">
+            <input
+              type="file"
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+              onChange={handleFileUpload}
+              disabled={isUploading}
+            />
+            <div className="bg-white p-2.5 rounded-full shadow-sm mb-2">
+              <UploadCloud className="text-blue-500" size={24} />
+            </div>
+            <p className="font-medium text-gray-700 text-sm">
+              {isUploading ? 'Subiendo...' : 'Arrastrá o hacé clic para subir'}
+            </p>
+            <p className="text-xs text-gray-400 mt-1">PDF, Excel, Word, imágenes y más</p>
           </div>
         </div>
 
-        {/* Files List */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="p-4 border-b border-gray-100 bg-gray-50 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-             <div className="flex items-center gap-2">
-                <h3 className="font-semibold text-gray-700 flex items-center gap-2">
-                  <FolderOpen size={18} /> Archivos Recientes
-                </h3>
-                <span className="text-xs text-gray-500">({state.dropFiles.length})</span>
-             </div>
-
-             {/* Sort Controls */}
-             <div className="flex items-center gap-2 text-sm">
-                <span className="text-gray-500 text-xs uppercase font-semibold mr-1">Ordenar por:</span>
-                <button 
-                  onClick={() => handleSort('uploadedAt')}
-                  className={`flex items-center gap-1 px-2 py-1 rounded-md transition-colors text-xs font-medium ${sortConfig.key === 'uploadedAt' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100'}`}
-                >
-                   Fecha
-                   {sortConfig.key === 'uploadedAt' && (sortConfig.direction === 'asc' ? <ArrowUp size={12}/> : <ArrowDown size={12}/>)}
-                </button>
-                <button 
-                  onClick={() => handleSort('type')}
-                  className={`flex items-center gap-1 px-2 py-1 rounded-md transition-colors text-xs font-medium ${sortConfig.key === 'type' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100'}`}
-                >
-                   Tipo
-                   {sortConfig.key === 'type' && (sortConfig.direction === 'asc' ? <ArrowUp size={12}/> : <ArrowDown size={12}/>)}
-                </button>
-                <button 
-                  onClick={() => handleSort('size')}
-                  className={`flex items-center gap-1 px-2 py-1 rounded-md transition-colors text-xs font-medium ${sortConfig.key === 'size' ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100'}`}
-                >
-                   Tamaño
-                   {sortConfig.key === 'size' && (sortConfig.direction === 'asc' ? <ArrowUp size={12}/> : <ArrowDown size={12}/>)}
-                </button>
-             </div>
+        {/* Search + Filter bar */}
+        <div className="flex flex-col sm:flex-row gap-3 mb-5">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
+            <input
+              type="text"
+              value={libSearch}
+              onChange={e => setLibSearch(e.target.value)}
+              placeholder="Buscar por nombre o descripción..."
+              className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white text-gray-900"
+            />
+            {libSearch && (
+              <button onClick={() => setLibSearch('')} className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600">
+                <X size={14} />
+              </button>
+            )}
           </div>
-          
-          <div className="divide-y divide-gray-100">
-             {sortedFiles.length > 0 ? (
-               sortedFiles.map(file => (
-                 <div key={file.id} className="p-4 flex items-center justify-between hover:bg-gray-50 transition-colors group">
-                    <div className="flex items-center gap-4 flex-1 min-w-0">
-                       <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center text-gray-500 flex-shrink-0">
-                          <FileText size={20} />
-                       </div>
-                       <div className="min-w-0 flex-1">
-                          <h4 className="font-medium text-gray-900 truncate pr-4">{file.name}</h4>
-                          <div className="flex items-center gap-3 text-xs text-gray-500">
-                             <span>{formatBytes(file.size)}</span>
-                             <span className="w-1 h-1 bg-gray-300 rounded-full"></span>
-                             <span>Por {file.uploadedBy}</span>
-                             <span className="w-1 h-1 bg-gray-300 rounded-full"></span>
-                             <span>{new Date(file.uploadedAt).toLocaleDateString()}</span>
-                          </div>
-                       </div>
+          <div className="flex gap-1.5 flex-wrap">
+            <button
+              onClick={() => setLibCategory(null)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${!libCategory ? 'bg-gray-800 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+            >
+              Todos
+            </button>
+            {LIB_CATEGORIES.map(cat => {
+              const count = state.dropFiles.filter(f => (f.category || 'General') === cat).length;
+              if (count === 0) return null;
+              return (
+                <button
+                  key={cat}
+                  onClick={() => setLibCategory(libCategory === cat ? null : cat)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${libCategory === cat ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                >
+                  {cat} <span className="opacity-60">({count})</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Sort bar */}
+        <div className="flex items-center gap-2 mb-4 text-xs text-gray-500">
+          <span className="font-medium uppercase tracking-wide">Ordenar:</span>
+          {(['uploadedAt', 'size', 'type'] as const).map(key => (
+            <button
+              key={key}
+              onClick={() => handleSort(key)}
+              className={`flex items-center gap-1 px-2 py-1 rounded-md transition-colors font-medium ${sortConfig.key === key ? 'bg-blue-100 text-blue-700' : 'text-gray-500 hover:bg-gray-100'}`}
+            >
+              {key === 'uploadedAt' ? 'Fecha' : key === 'size' ? 'Tamaño' : 'Tipo'}
+              {sortConfig.key === key && (sortConfig.direction === 'asc' ? <ArrowUp size={11}/> : <ArrowDown size={11}/>)}
+            </button>
+          ))}
+        </div>
+
+        {/* Files grouped by category */}
+        {Object.keys(grouped).length === 0 ? (
+          <div className="text-center py-16 bg-white rounded-2xl border border-dashed border-gray-200">
+            <FolderOpen className="mx-auto mb-3 text-gray-300" size={40} />
+            <p className="text-gray-400">{libSearch ? `Sin resultados para "${libSearch}"` : 'La biblioteca está vacía'}</p>
+          </div>
+        ) : (
+          Object.entries(grouped).map(([cat, files]) => (
+            <div key={cat} className="mb-6">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{cat}</span>
+                <span className="text-xs text-gray-300">({files.length})</span>
+                <div className="flex-1 h-px bg-gray-100 ml-1"></div>
+              </div>
+              <div className="grid grid-cols-1 gap-2">
+                {files.map(file => {
+                  const icon = getFileIcon(file.type, file.name);
+                  return (
+                    <div key={file.id} className="bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md hover:border-blue-200 transition-all p-4 flex items-center gap-4 group">
+                      {/* Ícono tipo */}
+                      <div className={`w-11 h-11 ${icon.bg} rounded-xl flex flex-col items-center justify-center flex-shrink-0`}>
+                        <FileText size={18} className={icon.color} />
+                        <span className={`text-[9px] font-bold ${icon.color} leading-none mt-0.5`}>{icon.label}</span>
+                      </div>
+
+                      {/* Info */}
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-gray-900 text-sm truncate">{file.name}</p>
+                        {file.description && (
+                          <p className="text-xs text-gray-500 truncate mt-0.5">{file.description}</p>
+                        )}
+                        <div className="flex items-center gap-2 mt-1 text-xs text-gray-400">
+                          <span>{formatBytes(file.size)}</span>
+                          <span>·</span>
+                          <span>{file.uploadedBy}</span>
+                          <span>·</span>
+                          <span>{new Date(file.uploadedAt).toLocaleDateString('es-AR')}</span>
+                          {(file.downloads || 0) > 0 && (
+                            <>
+                              <span>·</span>
+                              <span className="flex items-center gap-1">
+                                <Download size={10} /> {file.downloads}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Acciones */}
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        {isPreviewable(file) && (
+                          <button
+                            onClick={() => setLibPreview(file)}
+                            className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                            title="Vista previa"
+                          >
+                            <CheckCircle size={17} />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleDownload(file)}
+                          className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                          title="Descargar"
+                        >
+                          <Download size={17} />
+                        </button>
+                        {isAdmin && (
+                          <button
+                            onClick={() => handleDeleteDropFile(file)}
+                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                            title="Borrar"
+                          >
+                            <Trash2 size={17} />
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    
-                    <a 
-                      href={file.url} 
-                      download={file.name}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
-                      title="Descargar"
-                    >
-                      <Download size={20} />
-                    </a>
-                    {isAdmin && (
-                      <button
-                        onClick={() => handleDeleteDropFile(file)}
-                        className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors"
-                        title="Borrar"
-                      >
-                        <Trash2 size={20} />
-                      </button>
-                    )}
+                  );
+                })}
+              </div>
+            </div>
+          ))
+        )}
 
-                 </div>
-               ))
-             ) : (
-               <div className="p-8 text-center text-gray-400">
-                  <p>No hay archivos en la biblioteca aún.</p>
-               </div>
-             )}
+        {/* Modal preview */}
+        {libPreview && (
+          <div
+            className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4"
+            onClick={() => setLibPreview(null)}
+          >
+            <div
+              className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[85vh] overflow-hidden flex flex-col"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between p-4 border-b border-gray-100">
+                <p className="font-medium text-gray-800 truncate flex-1 mr-4">{libPreview.name}</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleDownload(libPreview)}
+                    className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm flex items-center gap-1.5 hover:bg-blue-700"
+                  >
+                    <Download size={14} /> Descargar
+                  </button>
+                  <button onClick={() => setLibPreview(null)} className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg">
+                    <X size={18} />
+                  </button>
+                </div>
+              </div>
+              <div className="flex-1 overflow-auto bg-gray-50 flex items-center justify-center p-4">
+                {libPreview.type.includes('image') ? (
+                  <img src={libPreview.url} alt={libPreview.name} className="max-w-full max-h-full object-contain rounded-lg" />
+                ) : (
+                  <iframe src={libPreview.url} className="w-full h-full min-h-[60vh] rounded-lg" title={libPreview.name} />
+                )}
+              </div>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     );
   };
+
 
   const renderAIChat = () => (
     <div className="max-w-2xl mx-auto h-[calc(100vh-80px)] md:h-[calc(100vh-40px)] flex flex-col pb-20 md:pb-0">
