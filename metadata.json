@@ -1,0 +1,8 @@
+{
+  "name": "WikiMovil 3",
+  "description": "Red Social Corporativa y Base de Conocimientos para técnicos de telecomunicaciones.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
