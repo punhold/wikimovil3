@@ -14,7 +14,7 @@ import {
 } from "firebase/auth";
 
 import {
-  doc, updateDoc, collection, addDoc, getDocs, query, orderBy, deleteDoc, onSnapshot
+  doc, updateDoc, collection, addDoc, getDocs, getDoc, query, orderBy, deleteDoc, onSnapshot
 } from "firebase/firestore";
 
 import { ref, deleteObject } from "firebase/storage";
@@ -480,10 +480,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, currentUser, onDelete, isAdmi
   );
 };
 
-const ADMIN_EMAILS = [
-  "punhold@personal.com.ar",
-  "gasala@personal.com.ar"
-];
+// Admins gestionados via Firestore (colección "admins")
 
 // 🏅 Badges por participación (cantidad de posts creados)
 const POST_BADGES = [
@@ -587,13 +584,23 @@ const startChatListening = () => {};
 
 
 const userEmail = firebaseUser?.email ?? '';
-const isAdmin = ADMIN_EMAILS.includes(userEmail);
+const [isAdmin, setIsAdmin] = useState(false);
 
 
 const isPasswordUser =
   firebaseUser?.providerData?.some(
     provider => provider.providerId === 'password'
   ) ?? false;
+
+// 🔐 Verificar si el usuario es admin consultando Firestore
+useEffect(() => {
+  if (!firebaseUser) {
+    setIsAdmin(false);
+    return;
+  }
+  const adminRef = doc(db, "admins", firebaseUser.uid);
+  getDoc(adminRef).then(snap => setIsAdmin(snap.exists())).catch(() => setIsAdmin(false));
+}, [firebaseUser]);
 
 
 
