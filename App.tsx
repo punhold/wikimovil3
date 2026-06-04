@@ -1426,7 +1426,7 @@ const unreadNotifications = state.notifications.filter(n => !n.read).length;
 
   const highlightText = (text: string, term: string): string => {
     if (!term || !text) return text;
-    const escaped = term.replace(/[.*+?^${}()|[\]\]/g, '\$&');
+      const escaped = term.replace(/[.*+?^${}()|\[\]\\]/g, '\$&');
     return text.replace(new RegExp(`(${escaped})`, 'gi'), '<mark class="bg-yellow-200 rounded px-0.5">$1</mark>');
   };
 
