@@ -55,14 +55,14 @@ const SidebarItem = ({
 }) => (
   <button
     onClick={onClick}
-    className={`flex items-center gap-4 w-full p-4 rounded-xl transition-all duration-200 ${
+    className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-xl transition-all duration-200 ${
       active 
         ? 'bg-blue-600 text-white shadow-lg shadow-blue-200' 
         : 'text-gray-600 hover:bg-gray-100'
     }`}
   >
-    <Icon size={24} />
-    <span className="font-medium text-lg lg:text-base">{label}</span>
+    <Icon size={18} />
+    <span className="font-medium text-sm">{label}</span>
   </button>
 );
 
@@ -2196,18 +2196,18 @@ if (!firebaseUser) {
 }
 
   return (
-    <div style={{ transform: 'scale(0.75)', transformOrigin: 'top left', width: '133.33%', minHeight: '133.33vh' }} className="flex bg-gray-50 font-sans">
+    <div className="flex min-h-screen bg-gray-50 font-sans" style={{ fontSize: '14px' }}>
       {/* Sidebar for Desktop */}
-      <aside className="hidden md:flex flex-col w-64 bg-white border-r border-gray-200 h-screen sticky top-0">
-        <div className="p-4 border-b border-gray-100 flex items-center gap-3">
+      <aside className="hidden md:flex flex-col w-52 bg-white border-r border-gray-200 h-screen sticky top-0">
+        <div className="p-3 border-b border-gray-100 flex items-center gap-2">
            <img 
               src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/25.png" 
               alt="Logo" 
-              className="w-12 h-12 object-contain"
+              className="w-8 h-8 object-contain"
            />
            <div>
-              <h2 className="text-3xl font-bold text-blue-600 tracking-tight leading-none">WikiMovil 3</h2>
-              <p className="text-xs text-gray-400 mt-1">Base de Conocimientos</p>
+              <h2 className="text-xl font-bold text-blue-600 tracking-tight leading-none">WikiMovil 3</h2>
+              <p className="text-xs text-gray-400 mt-0.5">Base de Conocimientos</p>
            </div>
         </div>
         
