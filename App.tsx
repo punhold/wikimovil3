@@ -99,11 +99,19 @@ const SearchBar = ({ value, onChange }: { value: string, onChange: (v: string) =
     </div>
     <input
       type="text"
-      className="block w-full pl-10 pr-3 py-3 border border-gray-200 rounded-xl leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm shadow-sm transition duration-150 ease-in-out text-gray-900"
+      className="block w-full pl-10 pr-10 py-3 border border-gray-200 rounded-xl leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm shadow-sm transition duration-150 ease-in-out text-gray-900"
       placeholder="Buscar en posts, autores o tags..."
       value={value}
       onChange={(e) => onChange(e.target.value)}
     />
+    {value && (
+      <button
+        onClick={() => onChange('')}
+        className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+      >
+        <X size={18} />
+      </button>
+    )}
   </div>
 );
 
@@ -2188,7 +2196,7 @@ if (!firebaseUser) {
 }
 
   return (
-    <div className="flex min-h-screen bg-gray-50 font-sans">
+    <div style={{ transform: 'scale(0.75)', transformOrigin: 'top left', width: '133.33%', minHeight: '133.33vh' }} className="flex bg-gray-50 font-sans">
       {/* Sidebar for Desktop */}
       <aside className="hidden md:flex flex-col w-64 bg-white border-r border-gray-200 h-screen sticky top-0">
         <div className="p-4 border-b border-gray-100 flex items-center gap-3">
