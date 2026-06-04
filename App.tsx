@@ -2554,7 +2554,7 @@ if (!firebaseUser) {
             background: 'linear-gradient(135deg, #00c8e8 0%, #0099cc 60%, #0077aa 100%)',
             position: 'relative',
             overflow: 'hidden',
-            height: '44px',
+            height: '56px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'flex-end',
