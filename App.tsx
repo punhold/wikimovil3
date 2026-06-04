@@ -2352,31 +2352,69 @@ if (!firebaseUser) {
              </nav>
           </div>
         )}
-        {/* Desktop Header (User Profile Top Right) */}
-        <div className="hidden md:flex justify-end items-center px-8 py-4 sticky top-0 z-10 bg-gray-50/90 backdrop-blur gap-4">
-          
-          <div className="relative">
-  <button
-    onClick={() => setShowNotifications(!showNotifications)}
-    className="relative p-2 rounded-full hover:bg-gray-100"
-  >
-    <Bell size={20} />
+        {/* Barra Personal */}
+        <div className="hidden md:block sticky top-0 z-20">
+          <div style={{
+            background: 'linear-gradient(135deg, #00c8e8 0%, #0099cc 60%, #0077aa 100%)',
+            position: 'relative',
+            overflow: 'hidden',
+            height: '44px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            paddingRight: '32px'
+          }}>
+            {/* Círculos decorativos */}
+            <div style={{
+              position: 'absolute', left: '-20px', top: '-30px',
+              width: '120px', height: '120px',
+              borderRadius: '50%',
+              background: 'rgba(255,255,255,0.12)'
+            }} />
+            <div style={{
+              position: 'absolute', left: '60px', top: '-50px',
+              width: '160px', height: '160px',
+              borderRadius: '50%',
+              background: 'rgba(255,255,255,0.08)'
+            }} />
+            <div style={{
+              position: 'absolute', right: '-10px', top: '-40px',
+              width: '130px', height: '130px',
+              borderRadius: '50%',
+              background: 'rgba(255,255,255,0.10)'
+            }} />
+            <span style={{
+              color: 'rgba(255,255,255,0.85)',
+              fontSize: '22px',
+              fontWeight: '300',
+              letterSpacing: '2px',
+              fontFamily: 'Inter, sans-serif',
+              position: 'relative',
+              zIndex: 1
+            }}>personal</span>
+          </div>
 
-    {state.notifications.filter(n => !n.read).length > 0 && (
-      <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] rounded-full px-1.5">
-        {state.notifications.filter(n => !n.read).length}
-      </span>
-    )}
-  </button>
+          {/* Campanita debajo de la barra */}
+          <div className="flex justify-end px-8 py-2 bg-gray-50/90 backdrop-blur">
+            <div className="relative">
+              <button
+                onClick={() => setShowNotifications(!showNotifications)}
+                className="relative p-2 rounded-full hover:bg-gray-100"
+              >
+                <Bell size={20} />
+                {state.notifications.filter(n => !n.read).length > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] rounded-full px-1.5">
+                    {state.notifications.filter(n => !n.read).length}
+                  </span>
+                )}
+              </button>
+              {showNotifications && <NotificationDropdown />}
+            </div>
+          </div>
+        </div>
 
-  {showNotifications && <NotificationDropdown />}
-
-</div>
-</div>
-
-
-        {/* Dynamic Content */}
-        <div className="px-4 py-6 md:px-8 max-w-4xl mx-auto">
+        {/* Dynamic Content — 15% más chico */}
+        <div className="px-4 py-4 md:px-8 max-w-4xl mx-auto" style={{ fontSize: '13.6px' }}>
           {state.activeTab === Tab.HOME && renderHome()}
           {state.activeTab === Tab.EXPLORE && renderExplore()}
           {state.activeTab === Tab.NEW_POST && renderNewPost()}
