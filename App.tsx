@@ -564,6 +564,10 @@ const startChatListening = () => {};
   
 
   // AI Chat State
+  // --- Buscador potente ---
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchFocused, setSearchFocused] = useState(false);
+
   const [chatMessages, setChatMessages] = useState<{role: 'user' | 'model', text: string, imageUrl?: string}[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [chatImage, setChatImage] = useState<File | null>(null);
@@ -1397,56 +1401,102 @@ const unreadNotifications = state.notifications.filter(n => !n.read).length;
 };
 
 
+  // --- Función de scoring para búsqueda potente ---
+  const scorePost = (post: Post, term: string): number => {
+    if (!term) return 1;
+    const t = term.toLowerCase();
+    let score = 0;
+    if (post.title?.toLowerCase().includes(t)) score += 10;
+    if (post.tags?.some(tag => tag.toLowerCase().includes(t))) score += 7;
+    if (post.authorName?.toLowerCase().includes(t)) score += 4;
+    const plainContent = (post.content || '').replace(/<[^>]*>/g, '').toLowerCase();
+    if (plainContent.includes(t)) score += 2;
+    // bonus si empieza con el término
+    if (post.title?.toLowerCase().startsWith(t)) score += 5;
+    return score;
+  };
+
+  const highlightText = (text: string, term: string): string => {
+    if (!term || !text) return text;
+    const escaped = term.replace(/[.*+?^${}()|[\]\]/g, '\$&');
+    return text.replace(new RegExp(`(${escaped})`, 'gi'), '<mark class="bg-yellow-200 rounded px-0.5">$1</mark>');
+  };
+
   const renderExplore = () => {
-    const filteredPosts = state.posts.filter(p => {
-        const matchesTag = activeFilterTag ? p.tags.includes(activeFilterTag) : true;
+    const term = searchQuery.trim();
 
-        const term = searchTerm.toLowerCase();
-        const matchesSearch = !term || (
-            p.content.toLowerCase().includes(term) ||
-            p.title?.toLowerCase().includes(term) ||
-            p.authorName.toLowerCase().includes(term) ||
-            p.tags.some(t => t.toLowerCase().includes(term))
-        );
+    // Filtrar posts con score
+    const scoredPosts = state.posts
+      .map(post => ({ post, score: scorePost(post, term) }))
+      .filter(({ score, post }) => {
+        if (!term) return true;
+        if (score === 0) return false;
+        if (activeFilterTag && !post.tags.includes(activeFilterTag)) return false;
+        return true;
+      })
+      .filter(({ post }) => activeFilterTag ? post.tags.includes(activeFilterTag) : true)
+      .sort((a, b) => term ? b.score - a.score : b.post.timestamp - a.post.timestamp)
+      .map(({ post }) => post);
 
-        return matchesTag && matchesSearch;
-    });
+    // Filtrar archivos de biblioteca
+    const matchingFiles = term ? state.dropFiles.filter(f =>
+      f.name.toLowerCase().includes(term.toLowerCase())
+    ) : [];
 
-    // 👇 AGREGAR ESTO
-    const orderedPosts = [...filteredPosts].sort((a, b) => b.timestamp - a.timestamp);
+    const goToAI = () => {
+      setChatInput(term);
+      setState(prev => ({ ...prev, activeTab: Tab.AI_CHAT }));
+    };
 
     return (
       <div className="max-w-2xl mx-auto pb-20 md:pb-0">
-        <h1 className="text-2xl font-bold text-gray-800 mb-6">Explorar</h1>
+        <h1 className="text-2xl font-bold text-gray-800 mb-4">Explorar</h1>
 
-        <div className="mb-6">
-          <SearchBar value={searchTerm} onChange={setSearchTerm} />
+        {/* Buscador principal */}
+        <div className="relative mb-6">
+          <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+            <Search className="text-gray-400" size={20} />
+          </div>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            onFocus={() => setSearchFocused(true)}
+            onBlur={() => setTimeout(() => setSearchFocused(false), 150)}
+            placeholder="Buscar posts, documentos, tags, autores..."
+            className="w-full pl-12 pr-12 py-3.5 border-2 border-gray-200 focus:border-blue-500 rounded-2xl bg-white shadow-sm focus:outline-none text-gray-900 placeholder-gray-400 transition-all"
+            autoFocus
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600"
+            >
+              <X size={18} />
+            </button>
+          )}
         </div>
 
-        <div className="mb-8">
-          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
-            Filtrar por Hashtag
-          </h2>
-
+        {/* Tags */}
+        <div className="mb-6">
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setActiveFilterTag(null)}
               className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                activeFilterTag === null 
-                  ? 'bg-gray-800 text-white' 
+                activeFilterTag === null
+                  ? 'bg-gray-800 text-white'
                   : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
               }`}
             >
               Todos
             </button>
-
             {state.availableTags.map(tag => (
               <button
                 key={tag}
                 onClick={() => setActiveFilterTag(activeFilterTag === tag ? null : tag)}
                 className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                  activeFilterTag === tag 
-                    ? 'bg-blue-600 text-white' 
+                  activeFilterTag === tag
+                    ? 'bg-blue-600 text-white'
                     : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
                 }`}
               >
@@ -1456,29 +1506,102 @@ const unreadNotifications = state.notifications.filter(n => !n.read).length;
           </div>
         </div>
 
-        <div className="space-y-4">
-          {orderedPosts.length > 0 ? (
-            orderedPosts.map(post => (
-              <PostCard 
-                key={post.id}
-                id={`post-${post.id}`}
-                post={post}
-                currentUser={state.currentUser}
-                isAdmin={isAdmin}
-                onDelete={handleDeleteRequest}
-                onTagClick={handleTagClick}
-                onComment={handleAddComment}
-                onVerify={handleVerifyPost}
-              />
+        {/* Resultados de biblioteca si hay búsqueda */}
+        {matchingFiles.length > 0 && (
+          <div className="mb-6">
+            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <FolderOpen size={14} /> Documentos ({matchingFiles.length})
+            </h2>
+            <div className="space-y-2">
+              {matchingFiles.map(file => (
+                <a
+                  key={file.id}
+                  href={file.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-100 shadow-sm hover:border-blue-300 hover:shadow transition-all"
+                >
+                  <div className="w-9 h-9 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <FileText size={18} className="text-blue-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-800 truncate"
+                      dangerouslySetInnerHTML={{ __html: highlightText(file.name, term) }}
+                    />
+                    <p className="text-xs text-gray-400">{(file.size / 1024).toFixed(1)} KB</p>
+                  </div>
+                  <Download size={16} className="text-gray-300 flex-shrink-0" />
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
 
+        {/* Resultados de posts */}
+        {term && (
+          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+            <FileText size={14} /> Posts ({scoredPosts.length})
+          </h2>
+        )}
+
+        <div className="space-y-4">
+          {scoredPosts.length > 0 ? (
+            scoredPosts.map(post => (
+              <div key={post.id} className="relative">
+                {term && (
+                  <div className="absolute -top-1 right-2 z-10">
+                    <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-medium">
+                      {post.tags.some(t => t.toLowerCase().includes(term.toLowerCase())) ? '🏷️ tag' :
+                       post.title?.toLowerCase().includes(term.toLowerCase()) ? '📌 título' : '📄 contenido'}
+                    </span>
+                  </div>
+                )}
+                <PostCard
+                  id={`post-${post.id}`}
+                  post={post}
+                  currentUser={state.currentUser}
+                  isAdmin={isAdmin}
+                  onDelete={handleDeleteRequest}
+                  onTagClick={handleTagClick}
+                  onComment={handleAddComment}
+                  onVerify={handleVerifyPost}
+                />
+              </div>
             ))
           ) : (
-            <div className="text-center py-10 text-gray-500 bg-white rounded-xl border border-dashed border-gray-300">
-              <Search className="mx-auto mb-2 opacity-50" size={32} />
-              <p>No se encontraron posts.</p>
+            <div className="text-center py-10 bg-white rounded-xl border border-dashed border-gray-200">
+              <Search className="mx-auto mb-3 text-gray-300" size={36} />
+              {term ? (
+                <>
+                  <p className="text-gray-500 font-medium mb-1">Sin resultados para "{term}"</p>
+                  <p className="text-gray-400 text-sm mb-4">Probá con otro término o preguntale a la IA</p>
+                  <button
+                    onClick={goToAI}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-full text-sm font-medium hover:opacity-90 transition-opacity shadow"
+                  >
+                    <Bot size={16} />
+                    Preguntar a la IA
+                  </button>
+                </>
+              ) : (
+                <p className="text-gray-400">Escribí algo para buscar</p>
+              )}
             </div>
           )}
         </div>
+
+        {/* Botón IA siempre visible cuando hay búsqueda y hay resultados */}
+        {term && scoredPosts.length > 0 && (
+          <div className="mt-6 text-center">
+            <button
+              onClick={goToAI}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-full text-sm font-medium hover:opacity-90 transition-opacity shadow-md"
+            >
+              <Bot size={16} />
+              ¿No encontraste lo que buscabas? Preguntá a la IA
+            </button>
+          </div>
+        )}
       </div>
     );
 };
