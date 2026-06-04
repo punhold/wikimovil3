@@ -2554,7 +2554,7 @@ if (!firebaseUser) {
             background: 'linear-gradient(135deg, #00c8e8 0%, #0099cc 60%, #0077aa 100%)',
             position: 'relative',
             overflow: 'hidden',
-            height: '56px',
+            height: '68px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'flex-end',
@@ -2580,13 +2580,14 @@ if (!firebaseUser) {
               background: 'rgba(255,255,255,0.10)'
             }} />
             <span style={{
-              color: 'rgba(255,255,255,0.85)',
-              fontSize: '22px',
-              fontWeight: '300',
-              letterSpacing: '2px',
-              fontFamily: 'Inter, sans-serif',
+              color: '#ffffff',
+              fontSize: '26px',
+              fontWeight: '700',
+              letterSpacing: '1px',
+              fontFamily: 'Nunito, Poppins, Inter, sans-serif',
               position: 'relative',
-              zIndex: 1
+              zIndex: 1,
+              textTransform: 'lowercase'
             }}>personal</span>
           </div>
 
